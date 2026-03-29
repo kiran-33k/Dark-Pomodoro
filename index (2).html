@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dark Pomodoro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Space+Mono:wght@700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        neon: '#00FF41',
+                        darkBg: '#1E1E24',
+                        lightBg: '#F3F4F6'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .font-timer { font-family: 'Space Mono', monospace; }
+
+        /* Smooth, lag-free global theme transition */
+        *, *::before, *::after {
+            transition-property: background-color, border-color, color, fill, stroke, box-shadow, filter, text-shadow;
+            transition-duration: 400ms;
+            transition-timing-function: ease-in-out;
+        }
+
+        /* Protect the 60fps progress ring from the global transition */
+        #progress-ring {
+            transition-property: stroke, filter; 
+            will-change: stroke-dashoffset;
+            filter: drop-shadow(0 0 8px rgba(0, 255, 65, 0.6));
+        }
+
+        html:not(.dark) #progress-ring { filter: none; stroke: #059669; }
+        html:not(.dark) #timer-display { color: #059669; text-shadow: none; filter: none; }
+        html:not(.dark) .title-glow { filter: none; color: #059669; }
+
+        /* Button spin animation */
+        #theme-icon {
+            display: inline-block;
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .spin-icon { transform: rotate(360deg) scale(0.8); }
+
+        .sprite-container { width: 64px; height: 64px; overflow: hidden; margin: 0 auto; position: relative; }
+        .sprite {
+            width: 256px; height: 64px;
+            background: url('https://via.placeholder.com/256x64/00FF41/1E1E24?text=Walk+Sprite') left center;
+            background-size: cover;
+        }
+        .walking { animation: walk 0.8s steps(4) infinite; }
+        @keyframes walk { 100% { transform: translateX(-256px); } }
+
+        .inventory-scroll::-webkit-scrollbar { width: 6px; }
+        .inventory-scroll::-webkit-scrollbar-thumb { background: #00FF41; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-lightBg dark:bg-darkBg text-gray-900 dark:text-white min-h-screen flex flex-col items-center p-4 md:p-8">
+
+    <div class="w-full max-w-md flex justify-end mb-2 mt-2">
+        <button id="theme-toggle" class="p-2 rounded-full bg-white dark:bg-gray-800 shadow-md hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 outline-none" title="Toggle Theme">
+            <span id="theme-icon" class="text-xl leading-none">🌙</span>
+        </button>
+    </div>
+
+    <div class="w-full max-w-md text-center mb-8">
+        <h1 class="text-4xl md:text-5xl font-bold tracking-tight text-emerald-600 dark:text-neon font-timer title-glow dark:drop-shadow-[0_0_15px_rgba(0,255,65,0.6)]">
+            DARK POMODORO
+        </h1>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2 font-semibold tracking-widest uppercase">
+            Kiran's Study Tool
+        </p>
+    </div>
+
+    <header class="w-full max-w-md flex justify-between items-center mb-8 bg-white dark:bg-gray-800/50 p-4 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <div>
+            <p class="text-sm text-gray-500 dark:text-gray-400 font-semibold mb-1">HP</p>
+            <div id="health-bar" class="flex gap-1 text-xl">
+                <span>❤️</span><span>❤️</span><span>❤️</span>
+            </div>
+        </div>
+        
+        <div class="text-right">
+            <p class="text-sm text-gray-500 dark:text-gray-400 font-semibold mb-1">Sessions</p>
+            <p id="session-count" class="text-xl font-bold text-emerald-600 dark:text-neon">0</p>
+        </div>
+    </header>
+
+    <main class="flex flex-col items-center justify-center flex-1 w-full max-w-md">
+        <p id="status-text" class="text-xs text-gray-500 uppercase tracking-widest mb-2 font-bold">Ready to Focus</p>
+
+        <div class="relative flex items-center justify-center w-[280px] h-[280px] md:w-[320px] md:h-[320px] mb-8">
+            <svg class="absolute inset-0 w-full h-full transform -rotate-90" viewBox="0 0 320 320">
+                <circle cx="160" cy="160" r="140" class="stroke-gray-300 dark:stroke-gray-700" stroke-width="12" fill="none" />
+                <circle id="progress-ring" cx="160" cy="160" r="140" class="stroke-emerald-600 dark:stroke-neon" stroke-width="12" fill="none"
+                        stroke-linecap="round" stroke-dasharray="879.6" stroke-dashoffset="0" />
+            </svg>
+            <div id="timer-display" class="absolute font-timer text-5xl md:text-6xl text-emerald-600 dark:text-neon drop-shadow-[0_0_15px_rgba(0,255,65,0.4)] tracking-tighter">
+                25:00
+            </div>
+        </div>
+
+        <div class="sprite-container mb-8 border-b-4 border-gray-300 dark:border-gray-700 pb-1">
+            <div id="character" class="sprite opacity-80 dark:opacity-100"></div>
+        </div>
+
+        <div class="flex gap-4 w-full justify-center">
+            <button id="start-btn" class="flex-1 bg-emerald-500 hover:bg-emerald-600 dark:bg-neon dark:hover:bg-[#00cc33] text-white dark:text-darkBg font-bold py-3 px-6 rounded-lg shadow-[0_4px_0_#047857] dark:shadow-[0_4px_0_#00cc33] active:shadow-none active:translate-y-1 transition-transform">
+                START FOCUS
+            </button>
+            <button id="pause-btn" class="flex-1 bg-gray-600 dark:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg shadow-[0_4px_0_#4b5563] dark:shadow-[0_4px_0_#4a5568] active:shadow-none active:translate-y-1 transition-transform hidden">
+                PAUSE
+            </button>
+            <button id="reset-btn" class="flex-1 border-2 border-gray-400 dark:border-gray-600 text-gray-600 dark:text-gray-300 font-bold py-3 px-6 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800 transition-colors">
+                ABORT
+            </button>
+        </div>
+    </main>
+
+    <footer class="w-full max-w-md mt-8 bg-white dark:bg-gray-800/50 rounded-xl p-4 border border-gray-200 dark:border-gray-700 h-40 flex flex-col shadow-sm">
+        <h3 class="text-gray-600 dark:text-gray-400 font-semibold mb-3 border-b border-gray-200 dark:border-gray-700 pb-2">Loot Bag</h3>
+        <ul id="inventory-list" class="inventory-scroll flex-1 overflow-y-auto space-y-2 text-sm"></ul>
+    </footer>
+
+    <div id="victory-modal" class="fixed inset-0 bg-black/80 hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white dark:bg-darkBg border-2 border-emerald-500 dark:border-neon p-8 rounded-xl max-w-sm w-full text-center shadow-[0_0_30px_rgba(0,255,65,0.2)]">
+            <h2 class="text-3xl font-bold text-emerald-600 dark:text-neon mb-2">Quest Complete!</h2>
+            <p class="text-gray-600 dark:text-gray-300 mb-6">You successfully focused for 25 minutes.</p>
+            <div class="bg-gray-100 dark:bg-gray-800 p-4 rounded-lg mb-6">
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">New Loot Acquired:</p>
+                <p id="loot-reveal" class="text-lg font-bold text-amber-500 dark:text-yellow-400"></p>
+            </div>
+            <button id="close-modal-btn" class="w-full bg-emerald-500 dark:bg-neon text-white dark:text-darkBg font-bold py-3 rounded-lg shadow-[0_4px_0_#047857] dark:shadow-[0_4px_0_#00cc33] active:translate-y-1 active:shadow-none transition-transform">
+                Claim & Continue
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const WORK_TIME_MS = 25 * 60 * 1000; 
+        let endTime = 0;
+        let timeRemainingMs = WORK_TIME_MS;
+        let timerActive = false;
+        let animationFrameId = null;
+        let playerHealth = 3;
+        let wakeLock = null;
+
+        let inventory = JSON.parse(localStorage.getItem('rpgTimerInventory')) || [];
+        let sessionsCompleted = parseInt(localStorage.getItem('rpgTimerSessions')) || 0;
+
+        const circleCircumference = 2 * Math.PI * 140; 
+        const lootTable = ["Sword of Focus 🗡️", "Shield of Anti-Procrastination 🛡️", "Potion of Clear Mind 🧪", "Scroll of Mastery 📜", "Bug-Free Code Charm 🐞"];
+
+        const timerDisplay = document.getElementById('timer-display');
+        const progressRing = document.getElementById('progress-ring');
+        const startBtn = document.getElementById('start-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const healthBar = document.getElementById('health-bar');
+        const character = document.getElementById('character');
+        const statusText = document.getElementById('status-text');
+        
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const htmlElement = document.documentElement;
+
+        // Enhanced Theme Management with Icon Swapping
+        function initTheme() {
+            const savedTheme = localStorage.getItem('rpgTheme');
+            if (savedTheme === 'light') {
+                htmlElement.classList.remove('dark');
+                themeIcon.textContent = '☀️';
+            } else {
+                htmlElement.classList.add('dark'); 
+                themeIcon.textContent = '🌙';
+            }
+        }
+
+        themeToggle.addEventListener('click', () => {
+            // Trigger animation
+            themeIcon.classList.add('spin-icon');
+            
+            setTimeout(() => {
+                htmlElement.classList.toggle('dark');
+                const isDark = htmlElement.classList.contains('dark');
+                localStorage.setItem('rpgTheme', isDark ? 'dark' : 'light');
+                themeIcon.textContent = isDark ? '🌙' : '☀️';
+                themeIcon.classList.remove('spin-icon');
+            }, 200); // Swap the icon halfway through the spin
+        });
+
+        function formatTime(ms) {
+            const totalSeconds = Math.ceil(ms / 1000);
+            const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+            const s = (totalSeconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
+
+        function updateUI() {
+            timerDisplay.textContent = formatTime(timeRemainingMs);
+            const timePercentage = timeRemainingMs / WORK_TIME_MS;
+            const offset = circleCircumference - (timePercentage * circleCircumference);
+            progressRing.style.strokeDashoffset = offset;
+        }
+
+        function tick() {
+            if (!timerActive) return;
+            
+            const now = Date.now();
+            timeRemainingMs = Math.max(0, endTime - now);
+            updateUI();
+
+            if (timeRemainingMs <= 0) {
+                completeSession();
+            } else {
+                animationFrameId = requestAnimationFrame(tick); 
+            }
+        }
+
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                }
+            } catch (err) { console.log('Wake Lock denied:', err); }
+        }
+
+        function releaseWakeLock() {
+            if (wakeLock !== null) {
+                wakeLock.release();
+                wakeLock = null;
+            }
+        }
+
+        function toggleFullScreen(forceOn) {
+            if (forceOn && !document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(err => console.log(err));
+            } else if (!forceOn && document.fullscreenElement) {
+                document.exitFullscreen().catch(err => console.log(err));
+            }
+        }
+
+        function startTimer() {
+            if (timerActive || timeRemainingMs <= 0 || playerHealth <= 0) return;
+            
+            timerActive = true;
+            endTime = Date.now() + timeRemainingMs; 
+            
+            startBtn.classList.add('hidden');
+            pauseBtn.classList.remove('hidden');
+            character.classList.add('walking');
+            statusText.textContent = "Focus Mode Active";
+            statusText.classList.add('text-red-500');
+
+            requestWakeLock();
+            toggleFullScreen(true); 
+            
+            animationFrameId = requestAnimationFrame(tick);
+        }
+
+        function pauseTimer() {
+            timerActive = false;
+            cancelAnimationFrame(animationFrameId);
+            
+            pauseBtn.classList.add('hidden');
+            startBtn.classList.remove('hidden');
+            startBtn.textContent = "RESUME";
+            character.classList.remove('walking');
+            statusText.textContent = "Paused";
+            statusText.classList.remove('text-red-500');
+
+            releaseWakeLock();
+            toggleFullScreen(false);
+        }
+
+        function resetTimer() {
+            timerActive = false;
+            cancelAnimationFrame(animationFrameId);
+            timeRemainingMs = WORK_TIME_MS;
+            playerHealth = 3;
+            
+            startBtn.classList.remove('hidden');
+            startBtn.textContent = "START FOCUS";
+            pauseBtn.classList.add('hidden');
+            character.classList.remove('walking');
+            statusText.textContent = "Ready to Focus";
+            statusText.classList.remove('text-red-500');
+            
+            releaseWakeLock();
+            toggleFullScreen(false);
+            updateHealthBar();
+            updateUI();
+        }
+
+        function completeSession() {
+            pauseTimer();
+            if (playerHealth > 0) {
+                sessionsCompleted++;
+                localStorage.setItem('rpgTimerSessions', sessionsCompleted);
+                document.getElementById('session-count').textContent = sessionsCompleted;
+                triggerLoot();
+            }
+        }
+
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden && timerActive) {
+                takeDamage();
+            }
+        });
+
+        function takeDamage() {
+            playerHealth--;
+            updateHealthBar();
+            
+            document.body.style.backgroundColor = "#7f1d1d";
+            setTimeout(() => { document.body.style.backgroundColor = ""; }, 300);
+
+            if (playerHealth <= 0) {
+                pauseTimer();
+                alert("Quest Failed! You left the tab and lost your focus.");
+            }
+        }
+
+        function updateHealthBar() {
+            healthBar.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                healthBar.innerHTML += i < playerHealth ? '<span>❤️</span>' : '<span class="opacity-30 grayscale">💔</span>';
+            }
+        }
+
+        function triggerLoot() {
+            const randomLoot = lootTable[Math.floor(Math.random() * lootTable.length)];
+            document.getElementById('loot-reveal').textContent = randomLoot;
+            document.getElementById('victory-modal').classList.remove('hidden');
+            
+            inventory.unshift(randomLoot); 
+            localStorage.setItem('rpgTimerInventory', JSON.stringify(inventory));
+            updateInventoryUI();
+        }
+
+        function updateInventoryUI() {
+            const list = document.getElementById('inventory-list');
+            if (inventory.length === 0) {
+                list.innerHTML = '<li class="text-gray-500 italic text-center mt-2">Inventory is empty.</li>';
+                return;
+            }
+            list.innerHTML = '';
+            inventory.forEach(item => {
+                const li = document.createElement('li');
+                li.className = 'bg-gray-100 dark:bg-gray-700/50 p-2 rounded text-gray-700 dark:text-gray-200 border border-gray-200 dark:border-gray-600';
+                li.textContent = item;
+                list.appendChild(li);
+            });
+        }
+
+        startBtn.addEventListener('click', startTimer);
+        pauseBtn.addEventListener('click', pauseTimer);
+        resetBtn.addEventListener('click', resetTimer);
+        document.getElementById('close-modal-btn').addEventListener('click', () => {
+            document.getElementById('victory-modal').classList.add('hidden');
+            resetTimer();
+        });
+
+        initTheme();
+        document.getElementById('session-count').textContent = sessionsCompleted;
+        updateInventoryUI();
+        updateHealthBar();
+        updateUI();
+    </script>
+</body>
+</html>
